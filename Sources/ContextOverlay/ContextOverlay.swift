@@ -219,6 +219,7 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
 
     var body: some View {
       if let namespace, let context {
+        
         SourceViewRepresentable(
           content: content,
           intercepter: { view in
@@ -245,18 +246,33 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
 
         }
         .matchedGeometryEffect(
-          id: ref.map { ObjectIdentifier($0) } as ObjectIdentifier?,
+          id: MatchedGeometryID.foreground(ref),
           in: namespace,
           properties: [.position],
           anchor: .center,
-          isSource: true
+          isSource: false
         )
+        .background {
+          Color.clear
+            .matchedGeometryEffect(
+              id: MatchedGeometryID.background(ref),
+              in: namespace,
+              properties: [.position],
+              anchor: .center,
+              isSource: true
+            )
+        }
       } else {
         Text("⚠️ Portal: Context not set")
       }
     }
   }
 
+}
+
+enum MatchedGeometryID: Hashable {
+  case foreground(UIView?)
+  case background(UIView?)
 }
 
 /// Displays the active source's live rendering at a matched-geometry destination.
@@ -269,7 +285,6 @@ public struct PortalDestination: View {
   @Environment(\.portalNamespace) private var namespace
 
   private let usesMatchedGeometry: Bool
-  private let configuration: Configuration
 
   /// Creates a destination with independently configurable native portal behavior.
   ///
@@ -278,11 +293,9 @@ public struct PortalDestination: View {
   ///     to the source. This is separate from native `Configuration.matchesPosition`.
   ///   - configuration: Native rendering and hit-testing options, applied on every update.
   public init(
-    usesMatchedGeometry: Bool = true,
-    configuration: Configuration = .init()
+    usesMatchedGeometry: Bool = true
   ) {
     self.usesMatchedGeometry = usesMatchedGeometry
-    self.configuration = configuration
   }
 
   /// Creates a destination using the original SwiftUI position-matching argument.
@@ -299,11 +312,18 @@ public struct PortalDestination: View {
     if let uiView = context?.targetView, let namespace {
       NativePortalViewRepresentable(
         sourceView: uiView,
-        configuration: configuration
+        configuration: .init(hidesSourceView: true)
       )
       .fixedSize()
       .matchedGeometryEffect(
-        id: usesMatchedGeometry ? Optional.some(ObjectIdentifier(uiView)) : nil,
+        id: MatchedGeometryID.foreground(uiView),
+        in: namespace,
+        properties: [.position],
+        anchor: .center,
+        isSource: true
+      )
+      .matchedGeometryEffect(
+        id: MatchedGeometryID.background(usesMatchedGeometry ? uiView : nil),
         in: namespace,
         properties: [.position],
         anchor: .center,
@@ -455,7 +475,7 @@ private final class SourceViewContainer<Content: View> {
                     }
 
                     PortalDestination(
-                      usesMatchedGeometry: phase != .identity
+                      usesMatchedGeometry: phase != .identity,
                     )
 
                     Capsule()
