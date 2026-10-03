@@ -421,7 +421,70 @@ private final class SourceViewContainer<Content: View> {
   struct PreviewContent: View {
 
     @State var uiView: UIView?
-    @State var isTransmitting: Bool = false
+    
+    struct Cell: View {
+      @State var isTransmitting: Bool = false
+      
+      var body: some View {
+        RoundedRectangle(cornerRadius: 20)
+          .fill(Color.red)
+          .frame(width: 300, height: 300)
+          .overlay {
+            VStack {
+              Text("Hello")
+              Button.init("Action") { 
+                
+              }
+              ProgressView()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .top) { 
+              Button.init("Action") { 
+                
+              }
+            }
+          }
+          .onTapGesture {
+            print("tap")
+            isTransmitting.toggle()
+          }
+          .contextOverlay(isEnabled: $isTransmitting) { phase in
+            ZStack {
+
+              Color.black
+                .opacity(phase == .identity ? 0.25 : 0)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+              
+              VStack {
+
+                Capsule()
+                  .frame(width: 100, height: 100)
+                  .foregroundColor(
+                    .red
+                  )
+                  .scaleEffect(phase == .identity ? 1 : 0)
+                
+                Button.init("Dismiss") { 
+                  isTransmitting = false
+                }
+
+                PortalDestination(
+                  usesMatchedGeometry: phase != .identity,
+                )
+
+                Capsule()
+                  .frame(width: 100, height: 100)
+                  .foregroundColor(
+                    .red
+                  )
+                  .scaleEffect(phase == .identity ? 1 : 0)
+
+              }
+            }
+          }
+      }
+    }
 
     var body: some View {
 
@@ -430,64 +493,12 @@ private final class SourceViewContainer<Content: View> {
         ZStack {
 
           ScrollView {
-
-            RoundedRectangle(cornerRadius: 20)
-              .fill(Color.red)
-              .frame(width: 300, height: 300)
-              .overlay {
-                VStack {
-                  Text("Hello")
-                  Button.init("Action") { 
-                    
-                  }
-                  ProgressView()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .top) { 
-                  Button.init("Action") { 
-                    
-                  }
-                }
-              }
-              .onTapGesture {
-                print("tap")
-                isTransmitting.toggle()
-              }
-              .contextOverlay(isEnabled: $isTransmitting) { phase in
-                ZStack {
-
-                  Color.black
-                    .opacity(phase == .identity ? 0.25 : 0)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                  
-                  VStack {
-
-                    Capsule()
-                      .frame(width: 100, height: 100)
-                      .foregroundColor(
-                        .red
-                      )
-                      .scaleEffect(phase == .identity ? 1 : 0)
-                    
-                    Button.init("Dismiss") { 
-                      isTransmitting = false
-                    }
-
-                    PortalDestination(
-                      usesMatchedGeometry: phase != .identity,
-                    )
-
-                    Capsule()
-                      .frame(width: 100, height: 100)
-                      .foregroundColor(
-                        .red
-                      )
-                      .scaleEffect(phase == .identity ? 1 : 0)
-
-                  }
-                }
-              }
+            
+            VStack {
+              Cell()
+              Cell()
+              Cell()
+            }
 
           }
 
