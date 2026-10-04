@@ -10,8 +10,12 @@ let package = Package(
   products: [
     .library(name: "ContextOverlay", targets: ["ContextOverlay"])
   ],
+  dependencies: [
+  ],  
   targets: [
-    .target(name: "ContextOverlay"),
+    .target(
+      name: "ContextOverlay"
+    ),
     .testTarget(name: "ContextOverlayTests", dependencies: ["ContextOverlay"])
   ],
   swiftLanguageModes: [.v6]

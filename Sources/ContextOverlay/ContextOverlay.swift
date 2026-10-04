@@ -18,13 +18,12 @@ public struct ContextOverlayContainer<Content: View>: View {
 
   public var body: some View {
     content
-      .blur(radius: context.overlay?.configuration.backgroundBlurRadius ?? 0)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .overlay {
         ZStack {
-          if let overlay = context.overlay?.content {
+          if let overlay = context.overlay {
             ZStack {
-              overlay
+              OverlaySystemView(overlay: overlay)
             }
             .transition(_Transition())
           }
@@ -32,6 +31,27 @@ public struct ContextOverlayContainer<Content: View>: View {
       }
       .environment(\.portalContext, context)
       .environment(\.portalNamespace, namespace)
+  }
+  
+  private struct OverlaySystemView: View {
+    
+    private let overlay: ContextOverlay
+    @Environment(\.portalTransitionPhase) var phase 
+    
+    init(overlay: ContextOverlay) {
+      self.overlay = overlay
+    }
+    
+    var body: some View {      
+      ZStack {   
+        BackdropBlurView(blurRadius: phase == .identity ? overlay.configuration.backgroundBlurRadius : 0)
+          .ignoresSafeArea()
+          .contentShape(Rectangle())
+          .allowsHitTesting(phase == .identity)
+        overlay.content
+      }
+    }
+    
   }
 
 }
@@ -232,7 +252,7 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
           _,
           isTransmitting in
 
-          withAnimation(.smooth) {
+          withAnimation(.snappy) {
             if isTransmitting {
               context.targetView = ref
               context.showOverlay(
@@ -423,18 +443,22 @@ private final class SourceViewContainer<Content: View> {
     @State var uiView: UIView?
     
     struct Cell: View {
+      
       @State var isTransmitting: Bool = false
+      
+      private let text: String
+      
+      init(text: String) {
+        self.text = text
+      }
       
       var body: some View {
         RoundedRectangle(cornerRadius: 20)
-          .fill(Color.red)
-          .frame(width: 300, height: 300)
+          .fill(Color.orange)
+          .frame(height: 100)
           .overlay {
+            Text(text).font(.title3)
             VStack {
-              Text("Hello")
-              Button.init("Action") { 
-                
-              }
               ProgressView()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -468,6 +492,7 @@ private final class SourceViewContainer<Content: View> {
                 Button.init("Dismiss") { 
                   isTransmitting = false
                 }
+                  .opacity(phase == .identity ? 1 : 0)
 
                 PortalDestination(
                   usesMatchedGeometry: phase != .identity,
@@ -483,6 +508,7 @@ private final class SourceViewContainer<Content: View> {
               }
             }
           }
+          .padding(10)
       }
     }
 
@@ -495,9 +521,9 @@ private final class SourceViewContainer<Content: View> {
           ScrollView {
             
             VStack {
-              Cell()
-              Cell()
-              Cell()
+              ForEach(0..<100) { i in
+                Cell(text: "\(i)")
+              }
             }
 
           }
