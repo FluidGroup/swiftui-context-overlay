@@ -18,13 +18,12 @@ public struct ContextOverlayContainer<Content: View>: View {
 
   public var body: some View {
     content
-      .blur(radius: context.overlay?.configuration.backgroundBlurRadius ?? 0)
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .overlay {
         ZStack {
-          if let overlay = context.overlay?.content {
+          if let overlay = context.overlay {
             ZStack {
-              overlay
+              OverlaySystemView(overlay: overlay)
             }
             .transition(_Transition())
           }
@@ -32,6 +31,27 @@ public struct ContextOverlayContainer<Content: View>: View {
       }
       .environment(\.portalContext, context)
       .environment(\.portalNamespace, namespace)
+  }
+  
+  private struct OverlaySystemView: View {
+    
+    private let overlay: ContextOverlay
+    @Environment(\.portalTransitionPhase) var phase 
+    
+    init(overlay: ContextOverlay) {
+      self.overlay = overlay
+    }
+    
+    var body: some View {      
+      ZStack {   
+        BackdropBlurView(blurRadius: phase == .identity ? overlay.configuration.backgroundBlurRadius : 0)
+          .ignoresSafeArea()
+          .contentShape(Rectangle())
+          .allowsHitTesting(phase == .identity)
+        overlay.content
+      }
+    }
+    
   }
 
 }
@@ -219,6 +239,7 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
 
     var body: some View {
       if let namespace, let context {
+        
         SourceViewRepresentable(
           content: content,
           intercepter: { view in
@@ -231,7 +252,7 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
           _,
           isTransmitting in
 
-          withAnimation(.smooth) {
+          withAnimation(.snappy) {
             if isTransmitting {
               context.targetView = ref
               context.showOverlay(
@@ -245,18 +266,33 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
 
         }
         .matchedGeometryEffect(
-          id: ref.map { ObjectIdentifier($0) } as ObjectIdentifier?,
+          id: MatchedGeometryID.foreground(ref),
           in: namespace,
           properties: [.position],
           anchor: .center,
-          isSource: true
+          isSource: false
         )
+        .background {
+          Color.clear
+            .matchedGeometryEffect(
+              id: MatchedGeometryID.background(ref),
+              in: namespace,
+              properties: [.position],
+              anchor: .center,
+              isSource: true
+            )
+        }
       } else {
         Text("⚠️ Portal: Context not set")
       }
     }
   }
 
+}
+
+enum MatchedGeometryID: Hashable {
+  case foreground(UIView?)
+  case background(UIView?)
 }
 
 /// Displays the active source's live rendering at a matched-geometry destination.
@@ -269,7 +305,6 @@ public struct PortalDestination: View {
   @Environment(\.portalNamespace) private var namespace
 
   private let usesMatchedGeometry: Bool
-  private let configuration: Configuration
 
   /// Creates a destination with independently configurable native portal behavior.
   ///
@@ -278,11 +313,9 @@ public struct PortalDestination: View {
   ///     to the source. This is separate from native `Configuration.matchesPosition`.
   ///   - configuration: Native rendering and hit-testing options, applied on every update.
   public init(
-    usesMatchedGeometry: Bool = true,
-    configuration: Configuration = .init()
+    usesMatchedGeometry: Bool = true
   ) {
     self.usesMatchedGeometry = usesMatchedGeometry
-    self.configuration = configuration
   }
 
   /// Creates a destination using the original SwiftUI position-matching argument.
@@ -299,11 +332,18 @@ public struct PortalDestination: View {
     if let uiView = context?.targetView, let namespace {
       NativePortalViewRepresentable(
         sourceView: uiView,
-        configuration: configuration
+        configuration: .init(hidesSourceView: true)
       )
       .fixedSize()
       .matchedGeometryEffect(
-        id: usesMatchedGeometry ? Optional.some(ObjectIdentifier(uiView)) : nil,
+        id: MatchedGeometryID.foreground(uiView),
+        in: namespace,
+        properties: [.position],
+        anchor: .center,
+        isSource: true
+      )
+      .matchedGeometryEffect(
+        id: MatchedGeometryID.background(usesMatchedGeometry ? uiView : nil),
         in: namespace,
         properties: [.position],
         anchor: .center,
@@ -401,7 +441,76 @@ private final class SourceViewContainer<Content: View> {
   struct PreviewContent: View {
 
     @State var uiView: UIView?
-    @State var isTransmitting: Bool = false
+    
+    struct Cell: View {
+      
+      @State var isTransmitting: Bool = false
+      
+      private let text: String
+      
+      init(text: String) {
+        self.text = text
+      }
+      
+      var body: some View {
+        RoundedRectangle(cornerRadius: 20)
+          .fill(Color.orange)
+          .frame(height: 100)
+          .overlay {
+            Text(text).font(.title3)
+            VStack {
+              ProgressView()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .top) { 
+              Button.init("Action") { 
+                
+              }
+            }
+          }
+          .onTapGesture {
+            print("tap")
+            isTransmitting.toggle()
+          }
+          .contextOverlay(isEnabled: $isTransmitting) { phase in
+            ZStack {
+
+              Color.black
+                .opacity(phase == .identity ? 0.25 : 0)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+              
+              VStack {
+
+                Capsule()
+                  .frame(width: 100, height: 100)
+                  .foregroundColor(
+                    .red
+                  )
+                  .scaleEffect(phase == .identity ? 1 : 0)
+                
+                Button.init("Dismiss") { 
+                  isTransmitting = false
+                }
+                  .opacity(phase == .identity ? 1 : 0)
+
+                PortalDestination(
+                  usesMatchedGeometry: phase != .identity,
+                )
+
+                Capsule()
+                  .frame(width: 100, height: 100)
+                  .foregroundColor(
+                    .red
+                  )
+                  .scaleEffect(phase == .identity ? 1 : 0)
+
+              }
+            }
+          }
+          .padding(10)
+      }
+    }
 
     var body: some View {
 
@@ -410,64 +519,12 @@ private final class SourceViewContainer<Content: View> {
         ZStack {
 
           ScrollView {
-
-            RoundedRectangle(cornerRadius: 20)
-              .fill(Color.red)
-              .frame(width: 300, height: 300)
-              .overlay {
-                VStack {
-                  Text("Hello")
-                  Button.init("Action") { 
-                    
-                  }
-                  ProgressView()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .top) { 
-                  Button.init("Action") { 
-                    
-                  }
-                }
+            
+            VStack {
+              ForEach(0..<100) { i in
+                Cell(text: "\(i)")
               }
-              .onTapGesture {
-                print("tap")
-                isTransmitting.toggle()
-              }
-              .contextOverlay(isEnabled: $isTransmitting) { phase in
-                ZStack {
-
-                  Color.black
-                    .opacity(phase == .identity ? 0.25 : 0)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                  
-                  VStack {
-
-                    Capsule()
-                      .frame(width: 100, height: 100)
-                      .foregroundColor(
-                        .red
-                      )
-                      .scaleEffect(phase == .identity ? 1 : 0)
-                    
-                    Button.init("Dismiss") { 
-                      isTransmitting = false
-                    }
-
-                    PortalDestination(
-                      usesMatchedGeometry: phase != .identity
-                    )
-
-                    Capsule()
-                      .frame(width: 100, height: 100)
-                      .foregroundColor(
-                        .red
-                      )
-                      .scaleEffect(phase == .identity ? 1 : 0)
-
-                  }
-                }
-              }
+            }
 
           }
 
