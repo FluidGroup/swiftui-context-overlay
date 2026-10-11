@@ -25,7 +25,9 @@ public struct ContextOverlayContainer<Content: View>: View {
             ZStack {
               OverlaySystemView(overlay: overlay)
             }
+            .environment(\.portalOverlay, overlay)
             .transition(_Transition())
+            .id(overlay)
           }
         }
       }
@@ -60,7 +62,7 @@ public struct ContextOverlayContainer<Content: View>: View {
 ///
 /// Equality compares request identity, allowing independently created requests
 /// to remain distinct even when their content and configuration match.
-public struct ContextOverlay: Equatable {
+public struct ContextOverlay: Hashable {
   
   /// Controls the background appearance while this overlay is presented.
   public struct Configuration {
@@ -76,6 +78,10 @@ public struct ContextOverlay: Equatable {
   public static func == (lhs: ContextOverlay, rhs: ContextOverlay) -> Bool {
     lhs.requestID == rhs.requestID
   }
+  
+  public func hash(into hasher: inout Hasher) {
+    requestID.hash(into: &hasher)
+  }
       
   /// The identity of this individual presentation request.
   public let requestID: UUID
@@ -84,10 +90,14 @@ public struct ContextOverlay: Equatable {
   /// The background appearance associated with this request.
   public let configuration: Configuration
   
+  public weak let source: UIView?
+  
   init(
+    source: UIView,
     content: AnyView,
     configuration: Configuration
   ) {
+    self.source = source
     self.requestID = .init()
     self.content = content
     self.configuration = configuration
@@ -104,19 +114,15 @@ private final class PortalContext: @MainActor Equatable {
     lhs === rhs
   }
 
-  weak var targetView: UIView? {
-    didSet {
-      print("targetView: \(targetView?.description ?? "nil")")
-    }
-  }    
-
   private(set) var overlay: ContextOverlay?
 
   func showOverlay<Content: View>(
-    _ overlay: Content,
+    source: UIView,
+    overlay: Content,
     configuration: ContextOverlay.Configuration
   ) {
     self.overlay = .init(
+      source: source,
       content: AnyView(overlay),
       configuration: configuration
     )
@@ -143,6 +149,7 @@ struct _Transition: Transition {
 
 extension EnvironmentValues {
   @Entry fileprivate var portalContext: PortalContext?
+  @Entry fileprivate var portalOverlay: ContextOverlay?
   @Entry fileprivate var portalNamespace: Namespace.ID?
   @Entry fileprivate var portalTransitionPhase: TransitionPhase?
 }
@@ -195,7 +202,9 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
       isTransmitting: $isTransmitting,
       configuration: configuration,
       content: { content },
-      overlay: { OverlayWrapper(overlay: overlay) }
+      overlay: {
+        OverlayWrapper(overlay: overlay)         
+      }
     )
   }
 
@@ -251,12 +260,16 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
         .onChange(of: isTransmitting.wrappedValue, initial: true) {
           _,
           isTransmitting in
+          
+          guard let ref else {
+            return
+          }
 
           withAnimation(.snappy) {
             if isTransmitting {
-              context.targetView = ref
               context.showOverlay(
-                overlay,
+                source: ref,
+                overlay: overlay,
                 configuration: configuration
               )
             } else {
@@ -301,7 +314,7 @@ enum MatchedGeometryID: Hashable {
 /// native portal owns rendering and UIKit hit forwarding at the destination.
 public struct PortalDestination: View {
 
-  @Environment(\.portalContext) private var context
+  @Environment(\.portalOverlay) private var overlay  
   @Environment(\.portalNamespace) private var namespace
 
   private let usesMatchedGeometry: Bool
@@ -329,10 +342,10 @@ public struct PortalDestination: View {
   }
 
   public var body: some View {
-    if let uiView = context?.targetView, let namespace {
+    if let uiView = overlay?.source, let namespace {
       NativePortalViewRepresentable(
         sourceView: uiView,
-        configuration: .init(hidesSourceView: true)
+        configuration: .init(hidesSourceView: false)
       )
       .fixedSize()
       .matchedGeometryEffect(
