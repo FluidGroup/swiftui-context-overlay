@@ -231,6 +231,7 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
     @Environment(\.portalContext) private var context
     @Environment(\.portalNamespace) private var namespace
     @State private var ref: UIView?
+    @State private var pendingGeometryID = UUID()
     private let overlay: _Overlay
     private let configuration: ContextOverlay.Configuration
 
@@ -257,29 +258,30 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
             }
           }
         )
-        .onChange(of: isTransmitting.wrappedValue, initial: true) {
-          _,
-          isTransmitting in
-          
-          guard let ref else {
-            return
-          }
+        .onChange(
+          of: SourceRequest(isEnabled: isTransmitting.wrappedValue, view: ref),
+          initial: true
+        ) { _, request in
+          guard let source = request.view else { return }
 
           withAnimation(.snappy) {
-            if isTransmitting {
+            if request.isEnabled {
+              // Measurement hosts cannot become the live rendering source.
+              guard source.window != nil else { return }
               context.showOverlay(
-                source: ref,
+                source: source,
                 overlay: overlay,
                 configuration: configuration
               )
-            } else {
+            } else if context.overlay?.source === source {
+              // Each source owns only its request. An inactive or outgoing
+              // source must not dismiss another source in the same container.
               context.hideOverlay()
             }
           }
-
         }
         .matchedGeometryEffect(
-          id: MatchedGeometryID.foreground(ref),
+          id: ref.map { MatchedGeometryID.foreground($0) } ?? .pendingForeground(pendingGeometryID),
           in: namespace,
           properties: [.position],
           anchor: .center,
@@ -288,7 +290,7 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
         .background {
           Color.clear
             .matchedGeometryEffect(
-              id: MatchedGeometryID.background(ref),
+              id: ref.map { MatchedGeometryID.background($0) } ?? .pendingBackground(pendingGeometryID),
               in: namespace,
               properties: [.position],
               anchor: .center,
@@ -303,7 +305,16 @@ struct ContextOverlayModifier<Overlay: View>: ViewModifier {
 
 }
 
+/// Observes both presentation intent and the asynchronously published source.
+private struct SourceRequest: Equatable {
+  let isEnabled: Bool
+  let view: UIView?
+}
+
+/// Keeps unmounted sources distinct before their UIKit identity is available.
 enum MatchedGeometryID: Hashable {
+  case pendingForeground(UUID)
+  case pendingBackground(UUID)
   case foreground(UIView?)
   case background(UIView?)
 }
@@ -412,14 +423,7 @@ private struct SourceViewRepresentable<Content: View>: UIViewRepresentable {
     uiView: UIViewType,
     context: Context
   ) -> CGSize? {
-    uiView.systemLayoutSizeFitting(
-      .init(
-        width: proposal.width ?? .greatestFiniteMagnitude,
-        height: proposal.height ?? .greatestFiniteMagnitude
-      ),
-      withHorizontalFittingPriority: .defaultHigh,
-      verticalFittingPriority: .fittingSizeLevel
-    )
+    context.coordinator.container.sizeThatFits(proposal)
   }
 }
 
@@ -441,6 +445,15 @@ private final class SourceViewContainer<Content: View> {
     self.hostingController.sizingOptions = .preferredContentSize
 
     hostingController.view.setNeedsLayout()
+  }
+
+  /// Measures through SwiftUI without resizing the hosting view to an unbounded
+  /// Auto Layout fitting size, which can overflow UIKit constraints in a ScrollView.
+  func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
+    hostingController.sizeThatFits(in: CGSize(
+      width: proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? .greatestFiniteMagnitude,
+      height: proposal.height.flatMap { $0.isFinite ? $0 : nil } ?? .greatestFiniteMagnitude
+    ))
   }
 
   func update(content: Content) {
