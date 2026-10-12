@@ -19,6 +19,36 @@ struct ContextOverlayIntegrationTests {
   }
 
   @Test
+  func unboundedScrollProposalKeepsUIKitSourceGeometryFinite() async throws {
+    let fixture = OverlayFixture(usesConstrainedScrollSource: true)
+    defer { fixture.close() }
+    try await fixture.waitUntil { fixture.constrainedCard?.window === fixture.window }
+    let card = try #require(fixture.constrainedCard)
+
+    #expect(card.bounds.width.isFinite && card.bounds.width > 0)
+    #expect(abs(card.bounds.height - 148) < 0.5)
+
+    fixture.model.isPresented = true
+    try await fixture.waitUntil { fixture.portal?.sourceView != nil }
+    let source = try #require(fixture.portal?.sourceView)
+    #expect(card.isDescendant(of: source))
+    #expect(source.bounds.width.isFinite && source.bounds.height.isFinite)
+    #expect(abs(source.bounds.height - 148) < 0.5)
+  }
+
+  @Test
+  func initiallyEnabledSourcePresentsAfterItsViewIsPublished() async throws {
+    let fixture = OverlayFixture(isInitiallyPresented: true)
+    defer { fixture.close() }
+    try await fixture.waitUntil { fixture.portal?.sourceView != nil && fixture.probe != nil }
+
+    let source = try #require(fixture.portal?.sourceView)
+    let probe = try #require(fixture.probe)
+    #expect(probe.isDescendant(of: source))
+    #expect(source.window === fixture.window)
+  }
+
+  @Test
   func presentationAndDismissalKeepTheOriginalRendering() async throws {
     let fixture = OverlayFixture()
     defer { fixture.close() }
@@ -31,7 +61,9 @@ struct ContextOverlayIntegrationTests {
 
     #expect(originalProbe.isDescendant(of: source))
     #expect(source.window === fixture.window)
-    #expect(portal.hidesSourceView)
+    // The current destination keeps the source visible while mirroring it.
+    // Removal must still disconnect the portal without replacing that source.
+    #expect(!portal.hidesSourceView)
 
     fixture.model.isPresented = false
     try await fixture.waitUntil { fixture.portal == nil && portal.sourceView == nil }
@@ -61,6 +93,34 @@ struct ContextOverlayIntegrationTests {
   }
 
   @Test
+  func disablingThePreviousSourceKeepsTheCurrentOverlay() async throws {
+    let fixture = OverlayFixture()
+    defer { fixture.close() }
+    try await fixture.waitUntil { fixture.probe != nil }
+    fixture.model.isPresented = true
+    try await fixture.waitUntil { fixture.portal?.sourceView != nil }
+    let originalPortal = try #require(fixture.portal)
+    let originalSource = try #require(originalPortal.sourceView)
+
+    fixture.model.isSecondaryPresented = true
+    try await fixture.waitUntil {
+      fixture.portal?.sourceView != nil && fixture.portal?.sourceView !== originalSource
+    }
+    let currentPortal = try #require(fixture.portal)
+    let currentSource = try #require(currentPortal.sourceView)
+
+    fixture.model.isPresented = false
+    fixture.model.value = "previous-source-disabled"
+    try await fixture.waitUntil { fixture.probe?.value == "previous-source-disabled" }
+    // Give the previous source's onChange and removal callbacks time to finish.
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(fixture.portal === currentPortal)
+    #expect(currentPortal.sourceView === currentSource)
+    #expect(currentSource.window === fixture.window)
+  }
+
+  @Test
   func hostingInheritsEnvironmentAndItsUpdates() async throws {
     let fixture = OverlayFixture()
     defer { fixture.close() }
@@ -86,6 +146,7 @@ struct ContextOverlayIntegrationTests {
 @Observable
 private final class OverlayModel {
   var isPresented = false
+  var isSecondaryPresented = false
   var value = "original"
   var localeIdentifier = "ja_JP"
   var environmentValue = "inherited"
@@ -100,11 +161,13 @@ private final class OverlayFixture {
 
   var probe: ContentProbe? { descendants(of: ContentProbe.self, in: window).first }
   var portal: NativePortalView? { descendants(of: NativePortalView.self, in: window).first }
+  var constrainedCard: ConstrainedCardProbe? { descendants(of: ConstrainedCardProbe.self, in: window).first }
 
-  init() {
+  init(isInitiallyPresented: Bool = false, usesConstrainedScrollSource: Bool = false) {
+    model.isPresented = isInitiallyPresented
     hostingController = UIHostingController(
       rootView: AnyView(
-        OverlayContent(model: model)
+        OverlayContent(model: model, usesConstrainedScrollSource: usesConstrainedScrollSource)
           .transaction {
             $0.animation = nil
             $0.disablesAnimations = true
@@ -141,9 +204,31 @@ private final class OverlayFixture {
 /// Presents a destination through the same Binding / builder API used by callers.
 private struct OverlayContent: View {
   let model: OverlayModel
+  let usesConstrainedScrollSource: Bool
 
   var body: some View {
     ContextOverlayContainer {
+      if usesConstrainedScrollSource {
+        ScrollView {
+          ConstrainedCardRepresentable()
+            .frame(height: 148)
+            .contextOverlay(
+              isEnabled: Binding(get: { model.isPresented }, set: { model.isPresented = $0 }),
+              configuration: .init(backgroundBlurRadius: 0)
+            ) { _ in
+              PortalDestination(usesMatchedGeometry: false)
+            }
+        }
+      } else {
+        sources
+      }
+    }
+    .environment(\.locale, Locale(identifier: model.localeIdentifier))
+    .environment(\.overlayTestValue, model.environmentValue)
+  }
+
+  private var sources: some View {
+    VStack(spacing: 20) {
       ProbeRepresentable(value: model.value)
         .frame(width: 120, height: 60)
         .contextOverlay(
@@ -152,9 +237,16 @@ private struct OverlayContent: View {
         ) { _ in
           PortalDestination(usesMatchedGeometry: false)
         }
+
+      Text("Secondary source")
+        .frame(width: 120, height: 60)
+        .contextOverlay(
+          isEnabled: Binding(get: { model.isSecondaryPresented }, set: { model.isSecondaryPresented = $0 }),
+          configuration: .init(backgroundBlurRadius: 0)
+        ) { _ in
+          PortalDestination(usesMatchedGeometry: false)
+        }
     }
-    .environment(\.locale, Locale(identifier: model.localeIdentifier))
-    .environment(\.overlayTestValue, model.environmentValue)
   }
 }
 
@@ -190,4 +282,34 @@ private struct OverlayUpdateTimeout: Error {}
 private func descendants<ViewType: UIView>(of type: ViewType.Type, in view: UIView) -> [ViewType] {
   let matches = (view as? ViewType).map { [$0] } ?? []
   return matches + view.subviews.flatMap { descendants(of: type, in: $0) }
+}
+
+/// Reproduces a caller-owned UIKit card with Auto Layout inside an unbounded scroll.
+private struct ConstrainedCardRepresentable: UIViewRepresentable {
+  func makeUIView(context: Context) -> ConstrainedCardProbe { ConstrainedCardProbe() }
+  func updateUIView(_ uiView: ConstrainedCardProbe, context: Context) {}
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: ConstrainedCardProbe, context: Context) -> CGSize? {
+    CGSize(width: proposal.width ?? 320, height: 148)
+  }
+}
+
+/// Keeps child constraints active while SwiftUI asks for an ideal source height.
+@MainActor
+private final class ConstrainedCardProbe: UIView {
+  init() {
+    super.init(frame: .zero)
+    let label = UILabel()
+    label.text = "Live UIKit card"
+    label.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(label)
+    NSLayoutConstraint.activate([
+      label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+      label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+      label.centerYAnchor.constraint(equalTo: centerYAnchor),
+    ])
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 }
