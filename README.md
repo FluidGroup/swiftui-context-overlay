@@ -2,7 +2,10 @@
 
 ContextOverlay displays a live rendering of SwiftUI content in an overlay while keeping the original content mounted. The source keeps its state and animations; the destination mirrors its existing hosting view.
 
-This package is independent of MessagingUI and has no external dependencies.
+This package is independent of MessagingUI. Its background blur uses
+[swiftui-backdrop-blur](https://github.com/FluidGroup/swiftui-backdrop-blur) 1.0.0
+or later through the `BackdropBlur` product. Swift Package Manager resolves this
+dependency automatically; applications only need to add `ContextOverlay`.
 
 ## Requirements
 

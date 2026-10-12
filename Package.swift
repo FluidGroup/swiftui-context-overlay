@@ -11,10 +11,14 @@ let package = Package(
     .library(name: "ContextOverlay", targets: ["ContextOverlay"])
   ],
   dependencies: [
-  ],  
+    .package(url: "https://github.com/FluidGroup/swiftui-backdrop-blur", from: "1.0.0"),
+  ],
   targets: [
     .target(
-      name: "ContextOverlay"
+      name: "ContextOverlay",
+      dependencies: [
+        .product(name: "BackdropBlur", package: "swiftui-backdrop-blur"),
+      ]
     ),
     .testTarget(name: "ContextOverlayTests", dependencies: ["ContextOverlay"])
   ],
