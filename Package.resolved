@@ -1,0 +1,15 @@
+{
+  "originHash" : "8107340a3b74ac7ecd4606b62865b5b3aad8e50aa376166655eefe46d65b1ff2",
+  "pins" : [
+    {
+      "identity" : "swiftui-backdrop-blur",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/FluidGroup/swiftui-backdrop-blur",
+      "state" : {
+        "revision" : "043c12d6dceaeeab556cf8f8dc1499b2759070b8",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}
