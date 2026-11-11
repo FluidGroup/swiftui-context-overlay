@@ -1,4 +1,5 @@
 import Observation
+import Portal
 import SwiftUI
 import Testing
 import UIKit
@@ -31,7 +32,7 @@ struct ContextOverlayIntegrationTests {
 
     #expect(originalProbe.isDescendant(of: source))
     #expect(source.window === fixture.window)
-    #expect(portal.hidesSourceView)
+    #expect(!portal.hidesSourceView)
 
     fixture.model.isPresented = false
     try await fixture.waitUntil { fixture.portal == nil && portal.sourceView == nil }

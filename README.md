@@ -7,6 +7,10 @@ This package is independent of MessagingUI. Its background blur uses
 or later through the `BackdropBlur` product. Swift Package Manager resolves this
 dependency automatically; applications only need to add `ContextOverlay`.
 
+Live rendering uses the `Portal` product from
+[swiftui-portal](https://github.com/FluidGroup/swiftui-portal). The native renderer
+and its UIKit hit-target tests are maintained there.
+
 ## Requirements
 
 - iOS 17.0 or later
@@ -104,4 +108,5 @@ xcodebuild test \
 
 ## License
 
-Apache License 2.0. The native portal implementation retains the MIT attribution from [FluidInterfaceKit](https://github.com/FluidGroup/FluidInterfaceKit/blob/main/Sources/FluidPortal/NativePortalView.swift) in its source file.
+Apache License 2.0. The extracted [Portal renderer](https://github.com/FluidGroup/swiftui-portal)
+retains its MIT license and FluidInterfaceKit attribution.

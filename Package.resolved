@@ -1,5 +1,5 @@
 {
-  "originHash" : "8107340a3b74ac7ecd4606b62865b5b3aad8e50aa376166655eefe46d65b1ff2",
+  "originHash" : "d8628de85941b0034411b7c6ed5216054951d8aa66506cce33008ee0e8064d10",
   "pins" : [
     {
       "identity" : "swiftui-backdrop-blur",
@@ -8,6 +8,14 @@
       "state" : {
         "revision" : "043c12d6dceaeeab556cf8f8dc1499b2759070b8",
         "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "swiftui-portal",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/FluidGroup/swiftui-portal",
+      "state" : {
+        "revision" : "bce6af07c329b2486721c8929d70d146c768c793"
       }
     }
   ],
