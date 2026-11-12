@@ -1,4 +1,5 @@
 import BackdropBlur
+import Portal
 import SwiftUI
 import UIKit
 
@@ -344,7 +345,7 @@ public struct PortalDestination: View {
 
   public var body: some View {
     if let uiView = overlay?.source, let namespace {
-      NativePortalViewRepresentable(
+      PortalView(
         sourceView: uiView,
         configuration: .init(hidesSourceView: false)
       )
